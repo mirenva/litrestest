@@ -1,46 +1,82 @@
 'use strict';
-document.addEventListener('DOMContentLoaded', function () {
-
+document.addEventListener('DOMContentLoaded', async function () {
 	let infoElem = document.querySelector(".info");
 
-	getParamValue('XML');
+	try {
+		const paramValue = await getParamValue('XML');
+		showParamValue(paramValue);
+
+		const xmlDoc = await getXML(paramValue);
+		showXML(xmlDoc);
+
+		const xmlDOM = await parseXML(xmlDoc);
+
+		const internalLinks = await findInternalLinks(xmlDOM);
+		showInternalLinks(internalLinks);
+
+		const brokenInternalLinks = await findBrokenInternalLinks(xmlDOM, internalLinks);
+		showBrokenInternalLinks(brokenInternalLinks);
+
+		const lettersAmount = await getLettersAmountInTags(xmlDOM);
+		showLettersAmountInTags(lettersAmount);
+
+		const normLettersAmount = await getNormLettersAmountInTags(xmlDOM);
+		showNormLettersAmountInTags(normLettersAmount);
+	} catch (error) {
+		alert(error);
+	}
 
 	/**
 	* Получение параметра из URL
 	* 
-	* @param {string} key 	Название искомого параметра
+	* @param {string} key 		Название искомого параметра
+	* @return {promise} 		Адрес из параметра
 	*/
 	function getParamValue(key) {
-		const url = new URL(window.location.href),
-			  paramValue = url.searchParams.get(key);
+		return new Promise(function(resolve, reject) {
+			const url = new URL(window.location.href),
+				  paramValue = url.searchParams.get(key);
 
-		if (paramValue) {
-			const xmlNameElem = document.createElement('div');
+			if (paramValue === "") {
+        		reject(new Error("В URL не указано значение параметра!"));
+			} else {
+				resolve(paramValue);
+			}
+    	});
+	}
 
-			xmlNameElem.innerHTML = "<p>Парсим файл по адресу: <a href=\""
-									+ paramValue + "\">" + paramValue + "</a></p>";
-			infoElem.appendChild(xmlNameElem);
+	/**
+	* Вывод полученного параметра на страницу
+	* 
+	* @param {string} paramValue 	Полученное значение параметра
+	*/
+	function showParamValue(paramValue) {
+		let xmlNameElem = document.createElement('div');
 
-			getXML(paramValue);
-		}
+		xmlNameElem.innerHTML = "<p>Парсим файл по адресу: <a href=\""
+								+ paramValue + "\">" + paramValue + "</a></p>";
+
+		infoElem.appendChild(xmlNameElem);
 	}
 
 	/**
 	* Запрос XML по найденному URL
 	* 
-	* @param {string} path 	Путь к файлу
+	* @param {string} path 		Путь к файлу
+	* @return {promise} 		Текст ответа
 	*/
-	function getXML(path) {
-		fetch(path)
-			.then(response => response.text())
-			.then(xmlDoc => showXML(xmlDoc))
-			.catch(error => console.log('Ошибка запроса: ', error));
+	async function getXML(path) {
+		const response = await fetch(path);
+		if(response.ok) {
+			return response.text();
+		}
+		throw new Error('Ошибка сети (скорее всего, не найден файл)');
 	}
 
 	/**
-	* Вывод XML
+	* Вывод полученного XML на страницу
 	* 
-	* @param {XML} xmlDoc		Содержимое полученного XML
+	* @param {object} xmlDoc		Содержимое полученного XML
 	*/
 	function showXML(xmlDoc) {
 		let xmlInfoElem = document.createElement('div');
@@ -49,55 +85,91 @@ document.addEventListener('DOMContentLoaded', function () {
 									"<summary>Ответ от файла XML (нажмите, чтобы развернуть):</summary>" +
 	    							"<div>" + xmlDoc + "</div>" +
 								"</details>";
+
 		infoElem.appendChild(xmlInfoElem);
+	}
 
-		const parser = new window.DOMParser(),
-			  xmlDOM = parser.parseFromString(xmlDoc, "text/xml");
-
-		findInternalLinks(xmlDOM);
-		getLettersAmountInTags(xmlDOM);
+	/**
+	* Парсинг полученного XML в DOM
+	* 
+	* @param {object} xmlDoc		Содержимое полученного XML
+	* @return {promise} 			Распарсенный XML
+	*/
+	function parseXML(xmlDoc) {
+		return new Promise(function(resolve) {
+			const parser = new window.DOMParser(),
+				  xmlDOM = parser.parseFromString(xmlDoc, "text/xml");
+			
+			resolve(xmlDOM);
+    	});
 	}
 
 	/**
 	* Поиск внутренних ссылок в распарсенном XML
 	* 
-	* @param {DOM} xmlDOM	Распарсенный XML
+	* @param {object} xmlDOM	Распарсенный XML
+	* @return {promise} 		Найденные внутренние ссылки
 	*/
 	function findInternalLinks(xmlDOM) {
-		let intLinksInfoElem = document.createElement('div');
-		const links = xmlDOM.getElementsByTagName('a'),
-			  intLinks = [];
+		return new Promise(function(resolve) {
+			console.log(typeof xmlDOM)
+			const links = xmlDOM.getElementsByTagName('a'),
+				  intLinks = [];
 
-	    for (let i=0; i < links.length; i++) {
-	        if ( links[i].hasAttribute("l:href") &&
-	        	 links[i].getAttribute("l:href")[0] == "#" )
-	        {
-	            intLinks.push(links[i]);
-	        }
-	    }
+		    for (let i=0; i < links.length; i++) {
+		        if ( links[i].hasAttribute("l:href") &&
+		        	 links[i].getAttribute("l:href")[0] == "#" )
+		        {
+		            intLinks.push(links[i]);
+		        }
+		    }
+
+			resolve(intLinks);
+    	});
+	}
+
+	/**
+	* Вывод количества найденных внутренних ссылок
+	* 
+	* @param {object} links	Найденные внутренние ссылки
+	*/
+	function showInternalLinks(links) {
+		let intLinksInfoElem = document.createElement('div');
 
 		intLinksInfoElem.innerHTML = "<p>Число внутренних ссылок (теги &lt;a href='#id'&gt;): <strong>" +
-									 intLinks.length + "</strong></p>";
-		infoElem.appendChild(intLinksInfoElem);
+									 links.length + "</strong></p>";
 
-		findBrokenInternalLinks(xmlDOM, intLinks);
+		infoElem.appendChild(intLinksInfoElem);
 	}
 
 	/**
 	* Поиск битых ссылок в полученном массиве внутренних ссылок
 	* 
-	* @param {DOM} xmlDOM		Распарсенный XML
-	* @param  {array} links		Полученный массив внутренних ссылок
+	* @param {object} xmlDOM		Распарсенный XML
+	* @param  {object} links		Полученный массив внутренних ссылок
+	* @return {promise} 			Полученные битые внутренние ссылки
 	*/
 	function findBrokenInternalLinks(xmlDOM, links) {
-		let brokenLinksInfoElem = document.createElement('div');
-		const brokenLinks = [];
+		return new Promise(function(resolve) {
+			const brokenLinks = [];
 
-	    for (let i=0; i < links.length; i++) {
-	        const href = links[i].getAttribute("l:href").slice(1);
-	        if ( xmlDOM.getElementById(href) ) continue;
-            brokenLinks.push(links[i]);
-	    }
+		    for (let i=0; i < links.length; i++) {
+		        const href = links[i].getAttribute("l:href").slice(1);
+		        if ( xmlDOM.getElementById(href) ) continue;
+	            brokenLinks.push(links[i]);
+		    }
+
+			resolve(brokenLinks);
+    	});
+	}
+
+	/**
+	* Вывод найденных битых ссылок
+	* 
+	* @param  {object} brokenLinks		Полученный массив битых внутренних ссылок
+	*/
+	function showBrokenInternalLinks(brokenLinks) {
+		let brokenLinksInfoElem = document.createElement('div');
 
 		brokenLinksInfoElem.innerHTML = "<p>Число битых внутренних ссылок (ссылки на несуществующие ID элементов): " +
 										"<strong>" + brokenLinks.length + "</strong></p>";
@@ -119,28 +191,65 @@ document.addEventListener('DOMContentLoaded', function () {
 	}
 
 	/**
-	* Запуск поиска количества букв в текстах внутри тегов,
-	* а также поиска количества букв в нормализованных текстах внутри тегов.
-	* Вывод результатов поиска
+	* Запуск поиска количества букв в текстах внутри тегов
 	* 
-	* @param {DOM} xmlDOM		Распарсенный XML
+	* @param {object} xmlDOM		Распарсенный XML
+	* @return {promise} 			Найденное количество букв
 	*/
 	function getLettersAmountInTags(xmlDOM) {
-		let lettersAmountInfoElem = document.createElement('div'),
-			textToParse = xmlDOM.firstElementChild.textContent;
+		return new Promise(function(resolve) {
+			let textToParse = xmlDOM.firstElementChild.textContent;
 
-	    const lettersAmount = calcLetters(textToParse);
-	    const normLettersAmount = calcNormLetters(textToParse);
+		    const lettersAmount = calcLetters(textToParse);
+
+			resolve(lettersAmount);
+    	});
+	}
+
+	/**
+	* Вывод результатов поиска количества букв в текстах внутри тегов
+	* 
+	* @param {object} lettersAmount		Найденное количество букв
+	*/
+	function showLettersAmountInTags(lettersAmount) {
+		let lettersAmountInfoElem = document.createElement('div');
 
 		lettersAmountInfoElem.innerHTML = "<p>Суммарное число букв внутри тегов, не включая пробельные символы<br>" +
 										  " (&lt;aaa dd='ddd'&gt;text&lt;/aaa&gt; - четыре буквы): " +
 										  "<strong>" + lettersAmount + "</strong></p>";
+		
+		infoElem.appendChild(lettersAmountInfoElem);
+	}
 
-		lettersAmountInfoElem.innerHTML += "<p>Суммарное число букв нормализованного текста внутри тегов, " +
+	/**
+	* Запуск поиска количества букв в нормализованных текстах внутри тегов
+	* 
+	* @param {DOM} xmlDOM		Распарсенный XML
+	* @return {promise} 		Найденное количество букв
+	*/
+	function getNormLettersAmountInTags(xmlDOM) {
+		return new Promise(function(resolve) {
+			let textToParse = xmlDOM.firstElementChild.textContent;
+
+		    const normLettersAmount = calcNormLetters(textToParse);
+
+			resolve(normLettersAmount);
+    	});
+	}
+
+	/**
+	* Вывод результатов поиска количества букв в нормализованных текстах внутри тегов
+	* 
+	* @param {DOM} normLettersAmount		Найденное количество букв
+	*/
+	function showNormLettersAmountInTags(normLettersAmount) {
+		let normLettersAmountInfoElem = document.createElement('div');
+
+		normLettersAmountInfoElem.innerHTML += "<p>Суммарное число букв нормализованного текста внутри тегов, " +
 										   "включая и пробелы: " + "<strong>" + normLettersAmount +
 										   "</strong></p>";
 		
-		infoElem.appendChild(lettersAmountInfoElem);
+		infoElem.appendChild(normLettersAmountInfoElem);
 	}
 
 	/**
